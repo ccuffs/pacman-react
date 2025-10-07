@@ -64,9 +64,18 @@ export default function Home() {
 
   // Carregar MobileNet truncado
   async function loadTruncatedMobileNet() {
-    const mobilenet = await tf.loadLayersModel(
-      'https://storage.googleapis.com/tfjs-models/tfjs/mobilenet_v1_0.25_224/model.json'
-    );
+    let mobilenet;
+    try {
+      // Tentar carregar do arquivo local primeiro
+      mobilenet = await tf.loadLayersModel('/model.json');
+      console.log('Modelo carregado do arquivo local');
+    } catch (error) {
+      // Se falhar, carregar da URL remota
+      console.log('Carregando modelo da URL remota...');
+      mobilenet = await tf.loadLayersModel(
+        'https://storage.googleapis.com/tfjs-models/tfjs/mobilenet_v1_0.25_224/model.json'
+      );
+    }
     const layer = mobilenet.getLayer('conv_pw_13_relu');
     return tf.model({ inputs: mobilenet.inputs, outputs: layer.output });
   }
@@ -267,7 +276,16 @@ export default function Home() {
   return (
     <>
       <header className={styles.header}>
-        Jogue PacMan usando uma <b>Rede Neural</b> e a câmera para controlar o jogo.
+        <div className={styles.headerContent}>
+          <div className={styles.headerText}>
+            Jogue PacMan usando uma <b>Rede Neural</b> e a câmera para controlar o jogo.
+          </div>
+          <img
+            src="/cc-logo-black-on-bg-transparent.png"
+            alt="CC Logo"
+            className={styles.headerLogo}
+          />
+        </div>
       </header>
 
       {noWebcam && (
@@ -279,8 +297,16 @@ export default function Home() {
 
       {status && <div className={styles.status}>{status}</div>}
 
-      <div className={styles.accordionContainer}>
-        {showController && (
+      <div className={styles.mainContent}>
+        <div className={styles.logoContainer}>
+          <img
+            src="/cc-logo-icon-bg-transparent.png"
+            alt="CC Logo"
+            className={styles.logo}
+          />
+        </div>
+        <div className={styles.accordionContainer}>
+          {showController && (
           <Accordion defaultExpanded>
             <AccordionSummary
               expandIcon={<ExpandMoreIcon />}
@@ -534,6 +560,14 @@ export default function Home() {
             </div>
           </AccordionDetails>
         </Accordion>
+        </div>
+        <div className={styles.uffsLogoContainer}>
+          <img
+            src="/cc-logo-icon-bg-transparent.png"
+            alt="CC Logo"
+            className={styles.uffsLogo}
+          />
+        </div>
       </div>
 
       <p className={styles.copyright} id="copyright">PAC-MAN™ © BANDAI NAMCO Entertainment Inc.</p>
