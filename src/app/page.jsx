@@ -503,7 +503,7 @@ export default function Home() {
                 <div className={styles.dropdown}>
                   <label>Epochs</label>
                   <div className={styles.select}>
-                    <select id="epochs" defaultValue="20">
+                    <select id="epochs" defaultValue="40">
                       <option value="10">10</option>
                       <option value="20">20</option>
                       <option value="40">40</option>
@@ -515,7 +515,7 @@ export default function Home() {
                 <div className={styles.dropdown}>
                   <label>Hidden units</label>
                   <div className={styles.select}>
-                    <select id="dense-units" defaultValue="100">
+                    <select id="dense-units" defaultValue="200">
                       <option value="10">10</option>
                       <option value="100">100</option>
                       <option value="200">200</option>
