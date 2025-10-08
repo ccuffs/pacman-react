@@ -79,8 +79,8 @@
 /* Main Content Layout */
 .mainContent {
   display: flex;
-  gap: 20px;
-  max-width: 2500px;
+  gap: 12px;
+  max-width: 1500px;
   margin: 20px auto;
   padding: 0 20px;
   align-items: flex-start;
@@ -93,15 +93,15 @@
   flex-shrink: 0;
   background: #272829;
   border-radius: 8px;
-  padding: 30px;
+  padding: 18px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .logo {
-  width: 180px;
-  height: 180px;
+  width: 108px;
+  height: 108px;
   object-fit: contain;
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
 }
@@ -112,15 +112,15 @@
   flex-shrink: 0;
   background: #272829;
   border-radius: 8px;
-  padding: 30px;
+  padding: 18px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .uffsLogo {
-  width: 180px;
-  height: 180px;
+  width: 108px;
+  height: 108px;
   object-fit: contain;
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
 }
@@ -128,8 +128,8 @@
 /* Accordion Container */
 .accordionContainer {
   flex: 1;
-  min-width: 2000px;
-  max-width: 2000px;
+  min-width: 1200px;
+  max-width: 1200px;
 }
 
 .accordionContainer :global(.MuiAccordion-root) {
@@ -238,7 +238,7 @@
   display: flex;
   flex-direction: row;
   justify-content: space-between;
-  gap: 150px;
+  gap: 90px;
 }
 
 .bigButtons button {
@@ -276,8 +276,8 @@
   display: flex;
   flex-direction: row;
   justify-content: space-between;
-  margin-top: 150px;
-  gap: 150px;
+  margin-top: 90px;
+  gap: 90px;
 }
 
 .hyperParams {
@@ -346,12 +346,12 @@
   display: flex;
   justify-content: center;
   overflow: hidden;
-  width: 160px;
+  width: 96px;
 }
 
 .webcamBoxInner video {
-  height: 160px;
-  width: 160px;
+  height: 96px;
+  width: 96px;
   transform: scaleX(-1);
 }
 
@@ -372,7 +372,7 @@
 }
 
 .panelRowMiddle .panelCell {
-  height: 132px;
+  height: 79px;
 }
 
 .panelRowBottom {
