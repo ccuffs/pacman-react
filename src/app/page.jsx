@@ -298,13 +298,6 @@ export default function Home() {
       {status && <div className={styles.status}>{status}</div>}
 
       <div className={styles.mainContent}>
-        <div className={styles.logoContainer}>
-          <img
-            src="/cc-logo-icon-bg-transparent.png"
-            alt="CC Logo"
-            className={styles.logo}
-          />
-        </div>
         <div className={styles.accordionContainer}>
           {showController && (
           <Accordion defaultExpanded>
@@ -560,13 +553,6 @@ export default function Home() {
             </div>
           </AccordionDetails>
         </Accordion>
-        </div>
-        <div className={styles.uffsLogoContainer}>
-          <img
-            src="/cc-logo-icon-bg-transparent.png"
-            alt="CC Logo"
-            className={styles.uffsLogo}
-          />
         </div>
       </div>
 

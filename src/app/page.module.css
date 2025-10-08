@@ -80,56 +80,18 @@
 .mainContent {
   display: flex;
   gap: 12px;
-  max-width: 1500px;
+  max-width: 1700px;
   margin: 20px auto;
   padding: 0 20px;
   align-items: flex-start;
   justify-content: center;
 }
 
-.logoContainer {
-  position: sticky;
-  top: 20px;
-  flex-shrink: 0;
-  background: #272829;
-  border-radius: 8px;
-  padding: 18px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.logo {
-  width: 108px;
-  height: 108px;
-  object-fit: contain;
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
-}
-
-.uffsLogoContainer {
-  position: sticky;
-  top: -20px;
-  flex-shrink: 0;
-  background: #272829;
-  border-radius: 8px;
-  padding: 18px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.uffsLogo {
-  width: 108px;
-  height: 108px;
-  object-fit: contain;
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
-}
-
 /* Accordion Container */
 .accordionContainer {
   flex: 1;
-  min-width: 1200px;
-  max-width: 1200px;
+  min-width: 1400px;
+  max-width: 1400px;
 }
 
 .accordionContainer :global(.MuiAccordion-root) {
@@ -182,16 +144,15 @@
   min-height: 700px;
   margin: 0 auto;
   overflow: auto;
-
 }
 
-.pacmanContainer #logo {
-  transform: scale(3);
+.pacmanContainer :global(#logo) {
+  transform: scale(2.3) translateX(10px);
   transform-origin: center;
+  display: inline-block;
 }
 
-.pacmanContainer #logo :global(#pcm-c) {
-  transform: none !important;
+.pacmanContainer :global(#logo #pcm-c) {
   overflow: visible !important;
 }
 
@@ -565,28 +526,6 @@
 
   .headerText {
     font-size: 20px;
-  }
-
-  .logoContainer {
-    position: static;
-    align-self: center;
-    padding: 10px;
-  }
-
-  .logo {
-    width: 120px;
-    height: 120px;
-  }
-
-  .uffsLogoContainer {
-    position: static;
-    align-self: center;
-    padding: 20px;
-  }
-
-  .uffsLogo {
-    width: 120px;
-    height: 120px;
   }
 
   .accordionContainer {
