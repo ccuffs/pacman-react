@@ -278,7 +278,7 @@ export default function Home() {
       <header className={styles.header}>
         <div className={styles.headerContent}>
           <div className={styles.headerText}>
-            Jogue PacMan usando uma <b>Rede Neural</b> e a câmera para controlar o jogo.
+            Jogue PacMan usando uma <b>INTELIGÊNCIA ARTIFICIAL</b> e a câmera para controlar o jogo.
           </div>
           <img
             src="/cc-logo-black-on-bg-transparent.png"
