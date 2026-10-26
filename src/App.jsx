@@ -5,6 +5,8 @@ import AccordionSummary from '@mui/material/AccordionSummary';
 import AccordionDetails from '@mui/material/AccordionDetails';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import LoadingScreen from './LoadingScreen.jsx';
+import TrainingProgress from './TrainingProgress.jsx';
+import { makeSteps } from './loadingSteps.js';
 import { loadAssets } from './assets.js';
 
 const GAME_WIDTH = 554;
@@ -18,16 +20,6 @@ const PREDICTIONS_PER_SECOND = 15;
 const MOBILENET_REMOTE_URL = 'https://storage.googleapis.com/tfjs-models/tfjs/mobilenet_v1_0.25_224/model.json';
 // Depois do primeiro download o modelo fica no IndexedDB do navegador (funciona offline).
 const MOBILENET_CACHE_URL = 'indexeddb://mobilenet-v1-025-224';
-
-// Peso (em %) de cada etapa na barra de progresso. Modelo e camera carregam em paralelo,
-// entao o total e a soma das contribuicoes de cada etapa.
-const PROGRESS_WEIGHTS = {
-  libs: 10,
-  assets: 5,
-  model: 65,
-  camera: 10,
-  warmup: 10,
-};
 
 // O TensorFlow.js e pesado: so e baixado depois que a pagina e o jogo ja foram exibidos.
 let tfPromise;
@@ -83,7 +75,8 @@ function concatBuffers(chunks) {
 
 // Baixa os pesos contando os bytes recebidos, para que a porcentagem seja real
 // (o onProgress do tf.loadLayersModel salta de 0 direto para o fim).
-async function downloadMobileNet(tf, onProgress) {
+// Retorna { manifest, weightSpecs, weightData }.
+async function downloadMobileNet(onFraction) {
   const baseUrl = MOBILENET_REMOTE_URL.slice(0, MOBILENET_REMOTE_URL.lastIndexOf('/') + 1);
   const response = await fetch(MOBILENET_REMOTE_URL);
   if (!response.ok) throw new Error(`HTTP ${response.status} ao baixar o modelo`);
@@ -107,35 +100,58 @@ async function downloadMobileNet(tf, onProgress) {
         if (done) break;
         chunks.push(value);
         receivedBytes += value.byteLength;
-        onProgress(Math.min(1, receivedBytes / totalBytes), false);
+        onFraction(Math.min(1, receivedBytes / totalBytes), receivedBytes, totalBytes);
       }
       return concatBuffers(chunks);
     })
   );
 
-  const weightData = concatBuffers(shards).buffer;
-  return tf.loadLayersModel(
-    tf.io.fromMemory({ modelTopology: manifest.modelTopology, weightSpecs, weightData })
-  );
+  return { manifest, weightSpecs, weightData: concatBuffers(shards).buffer };
 }
 
-// onProgress(fracao 0-1, veioDoCache)
-async function loadTruncatedMobileNet(tf, onProgress) {
+const formatMB = (bytes) => (bytes / 1024 / 1024).toFixed(1).replace('.', ',');
+const nextPaint = () => new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
+
+// onStep(id, patch) atualiza as etapas "download" e "tfload" da tela de carregamento.
+async function loadTruncatedMobileNet(tf, onStep) {
+  const cached = Boolean((await tf.io.listModels())[MOBILENET_CACHE_URL]);
   let mobilenet;
-  try {
+
+  if (cached) {
+    onStep('download', { state: 'skipped', detail: 'Modelo salvo neste navegador' });
+    onStep('tfload', { state: 'active', fraction: 0.1, detail: 'Iniciando o WebGL...', startedAt: Date.now() });
+    await tf.ready();
+    await nextPaint();
+    onStep('tfload', { fraction: 0.4, detail: 'Lendo o modelo salvo...' });
     mobilenet = await tf.loadLayersModel(MOBILENET_CACHE_URL);
-    onProgress(1, true);
-  } catch {
+  } else {
     // Primeira vez (ou cache limpo): baixa do Google e guarda no navegador.
-    mobilenet = await downloadMobileNet(tf, onProgress);
+    onStep('download', { state: 'active', fraction: 0, detail: 'Conectando...', startedAt: Date.now() });
+    const { manifest, weightSpecs, weightData } = await downloadMobileNet((fraction, received, total) =>
+      onStep('download', { fraction, detail: `${formatMB(received)} de ${formatMB(total)} MB` })
+    );
+    onStep('download', { state: 'done', fraction: 1, detail: '' });
+
+    onStep('tfload', { state: 'active', fraction: 0.1, detail: 'Iniciando o WebGL...', startedAt: Date.now() });
+    await tf.ready();
+    await nextPaint();
+    onStep('tfload', { fraction: 0.4, detail: 'Montando as camadas do modelo...' });
+    mobilenet = await tf.loadLayersModel(
+      tf.io.fromMemory({ modelTopology: manifest.modelTopology, weightSpecs, weightData })
+    );
+    onStep('tfload', { fraction: 0.7, detail: 'Salvando no navegador para uso offline...' });
     try {
       await mobilenet.save(MOBILENET_CACHE_URL);
     } catch (e) {
       console.warn('Nao foi possivel guardar o modelo para uso offline:', e);
     }
   }
+
+  onStep('tfload', { fraction: 0.9, detail: 'Recortando as camadas usadas...' });
   const layer = mobilenet.getLayer('conv_pw_13_relu');
-  return tf.model({ inputs: mobilenet.inputs, outputs: layer.output });
+  const truncated = tf.model({ inputs: mobilenet.inputs, outputs: layer.output });
+  onStep('tfload', { state: 'done', fraction: 1, detail: '' });
+  return truncated;
 }
 
 class ControllerDataset {
@@ -234,11 +250,11 @@ function SamplePad({ direction, label, total, canvasRef, onStart, onStop }) {
 }
 
 export default function App() {
-  const [progress, setProgress] = useState({ label: 'Iniciando...', value: 0 });
+  const [steps, setSteps] = useState(makeSteps);
   const [attempt, setAttempt] = useState(0);
   const [assets, setAssets] = useState({});
   const [totals, setTotals] = useState([0, 0, 0, 0]);
-  const [trainStatus, setTrainStatus] = useState('TREINAR MODELO');
+  const [training, setTraining] = useState(null);
   const [isPredicting, setIsPredicting] = useState(false);
   const [isTraining, setIsTraining] = useState(false);
   const [modelReady, setModelReady] = useState(false);
@@ -284,65 +300,56 @@ export default function App() {
     return () => observer.disconnect();
   }, []);
 
-  // Biblioteca de IA, jogo, modelo e webcam, com progresso para a tela de carregamento.
+  // Biblioteca de IA, jogo, modelo e webcam, com progresso por etapa para a tela de carregamento.
   useEffect(() => {
     let mounted = true;
-    const pending = { model: true, camera: true };
-    let modelLabel = 'Baixando o modelo de IA (apenas na primeira vez)...';
 
-    const fractions = { libs: 0, assets: 0, model: 0, camera: 0, warmup: 0 };
-
-    const report = (step, fraction, label) => {
+    // Atualiza uma etapa; um patch com `state` troca o estado, senao so a fracao/detalhe.
+    const step = (id, patch) => {
       if (!mounted) return;
-      fractions[step] = Math.min(1, Math.max(fractions[step], fraction));
-      const value = Math.round(
-        Object.keys(fractions).reduce((sum, key) => sum + PROGRESS_WEIGHTS[key] * fractions[key], 0)
-      );
-      setProgress({ label, value });
+      setSteps((prev) => ({ ...prev, [id]: { ...prev[id], ...patch } }));
     };
-    const pendingLabel = () => (pending.model ? modelLabel : 'Aguardando permissão da câmera...');
+    const start = (id, detail) => step(id, { state: 'active', fraction: 0, detail, startedAt: Date.now() });
+    const finish = (id) => step(id, { state: 'done', fraction: 1, detail: '' });
 
     async function init() {
       setError(null);
-      setProgress({ label: 'Carregando a biblioteca de IA e o jogo...', value: 0 });
+      setSteps(makeSteps());
       try {
+        start('libs', 'Baixando o TensorFlow.js e o motor do Pac-Man...');
+        start('assets', 'Baixando sprite, joystick e botões...');
         let libsDone = 0;
         const libStep = (promise) =>
           promise.then((value) => {
-            report('libs', ++libsDone / 2, 'Carregando a biblioteca de IA e o jogo...');
+            step('libs', { fraction: ++libsDone / 2 });
             return value;
           });
-        const assetsPromise = loadAssets((fraction) =>
-          report('assets', fraction, 'Baixando as imagens do jogo...')
-        );
+        const assetsPromise = loadAssets((fraction) => step('assets', { fraction }));
         const [tf, loadedAssets] = await Promise.all([
           libStep(loadTf()),
-          assetsPromise,
+          assetsPromise.then((urls) => {
+            finish('assets');
+            return urls;
+          }),
           libStep(loadGameScript(() => assetsPromise.then((urls) => urls.sprite))),
         ]);
+        finish('libs');
         document.documentElement.style.setProperty('--pointer-url', `url("${loadedAssets.pointer}")`);
         if (mounted) setAssets(loadedAssets);
         tfRef.current = tf;
         controllerDatasetRef.current?.clear();
         controllerDatasetRef.current = new ControllerDataset(tf, NUM_CLASSES);
 
+        start('camera', 'Aguardando a permissão da câmera...');
         const [cameraResult, modelResult] = await Promise.allSettled([
           tagError(
             'webcam',
             tf.data.webcam(undefined, { resizeWidth: 224, resizeHeight: 224, facingMode: 'user' })
           ).then((webcam) => {
-            pending.camera = false;
-            report('camera', 1, pendingLabel());
+            finish('camera');
             return webcam;
           }),
-          tagError(
-            'model',
-            loadTruncatedMobileNet(tf, (fraction, cached) => {
-              modelLabel = cached ? 'Carregando o modelo de IA salvo...' : modelLabel;
-              if (fraction >= 1) pending.model = false;
-              report('model', fraction, pendingLabel());
-            })
-          ),
+          tagError('model', loadTruncatedMobileNet(tf, step)),
         ]);
 
         const webcam = cameraResult.status === 'fulfilled' ? cameraResult.value : null;
@@ -357,16 +364,19 @@ export default function App() {
         const truncatedMobileNet = modelResult.value;
         truncatedMobileNetRef.current = truncatedMobileNet;
 
-        // Warm up
-        report('warmup', 0, 'Preparando o modelo...');
+        // Warm up: a primeira inferencia compila os shaders na GPU e e a parte mais lenta.
+        start('warmup', 'Capturando uma imagem da câmera...');
+        await nextPaint();
         const screenShot = await webcam.capture();
-        tf.tidy(() => {
-          truncatedMobileNet.predict(screenShot.expandDims(0));
-        });
+        step('warmup', { fraction: 0.3, detail: 'Compilando o modelo na GPU (pode levar alguns segundos)...' });
+        await nextPaint();
+        const warmupOutput = tf.tidy(() => truncatedMobileNet.predict(screenShot.expandDims(0)));
+        await warmupOutput.data();
+        warmupOutput.dispose();
         screenShot.dispose();
+        finish('warmup');
 
         if (mounted) {
-          report('warmup', 1, 'Pronto!');
           setShowController(true);
         }
       } catch (e) {
@@ -426,6 +436,7 @@ export default function App() {
     if (isRecordingRef.current) return;
     isRecordingRef.current = true;
     setError(null);
+    setTraining((prev) => (prev?.phase === 'done' ? null : prev));
     try {
       while (isRecordingRef.current) {
         await addExample(label);
@@ -452,6 +463,7 @@ export default function App() {
     controllerDatasetRef.current.clear();
     setTotals([0, 0, 0, 0]);
     setError(null);
+    setTraining(null);
     for (const ref of Object.values(thumbCanvasRefs)) {
       const canvas = ref.current;
       canvas?.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
@@ -482,7 +494,9 @@ export default function App() {
 
     setError(null);
     setIsTraining(true);
-    setTrainStatus('Treinando...');
+    setTraining({ phase: 'preparing', epochs });
+    // Deixa a barra "preparando" aparecer antes do trabalho pesado (montar e compilar o modelo).
+    await nextPaint();
 
     modelRef.current?.dispose();
     modelRef.current = tf.sequential({
@@ -508,23 +522,65 @@ export default function App() {
     const optimizer = tf.train.adam(learningRate);
     modelRef.current.compile({ optimizer, loss: 'categoricalCrossentropy' });
 
+    const batchesPerEpoch = Math.ceil(dataset.xs.shape[0] / batchSize);
+    const startedAt = performance.now();
+    const epochEnds = [];
+    let currentEpoch = 0;
+    let lastLoss = null; // loss da ultima epoca (a do batch oscila demais)
+    let lastRender = 0;
+
+    // Tempo restante: media das epocas depois da primeira (a primeira inclui a compilacao dos shaders).
+    const estimateEta = (progressInEpochs) => {
+      if (epochEnds.length < 2) return null;
+      const averageEpoch = (epochEnds[epochEnds.length - 1] - epochEnds[0]) / (epochEnds.length - 1);
+      return (Math.max(0, epochs - progressInEpochs) * averageEpoch) / 1000;
+    };
+
     try {
       await modelRef.current.fit(dataset.xs, dataset.ys, {
         batchSize,
         epochs,
         callbacks: {
+          onEpochBegin: (epoch) => {
+            currentEpoch = epoch;
+          },
+          onBatchEnd: (batch) => {
+            const now = performance.now();
+            if (now - lastRender < 100) return;
+            lastRender = now;
+            const progressInEpochs = currentEpoch + Math.min(1, (batch + 1) / batchesPerEpoch);
+            setTraining({
+              phase: 'running',
+              epoch: currentEpoch,
+              epochs,
+              fraction: progressInEpochs / epochs,
+              etaSeconds: estimateEta(progressInEpochs),
+              loss: lastLoss,
+            });
+          },
           onEpochEnd: (epoch, logs) => {
-            setTrainStatus(`Época ${epoch + 1}/${epochs} · loss ${logs.loss.toFixed(4)}`);
+            epochEnds.push(performance.now());
+            lastLoss = logs.loss;
+            lastRender = performance.now();
+            setTraining({
+              phase: 'running',
+              epoch: Math.min(epoch + 1, epochs - 1),
+              epochs,
+              fraction: (epoch + 1) / epochs,
+              etaSeconds: estimateEta(epoch + 1),
+              loss: lastLoss,
+            });
           },
         },
       });
       setModelReady(true);
+      setTraining({ phase: 'done', elapsed: (performance.now() - startedAt) / 1000, loss: lastLoss });
     } catch (e) {
       console.error(e);
+      setTraining(null);
       setError({ kind: 'train', message: 'Falha durante o treinamento. Veja o console para detalhes.' });
     } finally {
       optimizer.dispose();
-      setTrainStatus('TREINAR MODELO');
       setIsTraining(false);
     }
   }
@@ -589,7 +645,7 @@ export default function App() {
     <>
       {loading && (
         <LoadingScreen
-          progress={progress}
+          steps={steps}
           error={error && error.kind === 'model' ? error : null}
           onRetry={() => setAttempt((n) => n + 1)}
         />
@@ -691,15 +747,15 @@ export default function App() {
                   <div className={styles.bigButtons}>
                     <button id="train" type="button" onClick={train} disabled={isTraining || isPredicting}>
                       <img width="66" height="66" src={assets.button} alt="" />
-                      <span id="train-status" aria-live="polite">
-                        {trainStatus}
-                      </span>
+                      <span id="train-status">{isTraining ? 'TREINANDO...' : 'TREINAR MODELO'}</span>
                     </button>
                     <button id="predict" type="button" onClick={togglePredict} disabled={!modelReady || isTraining}>
                       <img width="66" height="66" src={assets.button} alt="" />
                       <span>{isPredicting ? 'PARAR' : 'JOGAR'}</span>
                     </button>
                   </div>
+
+                  <TrainingProgress training={training} />
 
                   <div className={styles.paramsWebcamRow}>
                     <div className={styles.hyperParams}>

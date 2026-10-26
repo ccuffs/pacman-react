@@ -577,17 +577,19 @@
 
 /** Tela de carregamento. **/
 .loadingOverlay {
-  align-items: center;
+  align-items: flex-start;
   background: #272829;
   display: flex;
   inset: 0;
   justify-content: center;
+  overflow-y: auto;
   padding: 20px;
   position: fixed;
   z-index: 2000;
 }
 
 .loadingCard {
+  margin: 8vh auto 0;
   max-width: 480px;
   text-align: center;
   width: 100%;
@@ -636,4 +638,99 @@
   font-size: 16px;
   line-height: 1.5;
   margin: 0 0 20px;
+}
+
+/** Etapas do carregamento. **/
+.stepList {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  text-align: left;
+}
+
+.stepRow {
+  align-items: flex-start;
+  color: #b5b6be;
+  display: flex;
+  font-size: 14px;
+  gap: 10px;
+  padding: 6px 0;
+}
+
+.step_active {
+  color: #f5f4f6;
+}
+
+.step_done,
+.step_skipped {
+  color: #70C8B7;
+}
+
+.stepIcon {
+  flex: none;
+  text-align: center;
+  width: 16px;
+}
+
+.stepBody {
+  flex: 1;
+  min-width: 0;
+}
+
+.stepHeader {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.stepValue {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.stepBar {
+  background-color: #373535 !important;
+  border-radius: 3px;
+  height: 5px !important;
+  margin-top: 6px;
+}
+
+.stepBar :global(.MuiLinearProgress-bar) {
+  background-color: #fdae16;
+}
+
+.stepDetail {
+  color: #b5b6be;
+  display: block;
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+/** Progresso do treino. **/
+.trainingProgress {
+  margin-top: 28px;
+  max-width: 520px;
+  width: 100%;
+}
+
+.trainingBar {
+  background-color: #55575c !important;
+  border-radius: 4px;
+  height: 10px !important;
+}
+
+.trainingBar :global(.MuiLinearProgress-bar) {
+  background-color: #70C8B7;
+}
+
+.trainingText,
+.trainingSummary {
+  color: #f5f4f6;
+  font-size: 14px;
+  margin: 10px 0 0;
+  text-align: center;
+}
+
+.trainingSummary {
+  color: #70C8B7;
 }
