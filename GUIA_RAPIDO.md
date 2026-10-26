@@ -1,6 +1,18 @@
 # 🎮 Guia Rápido - Pac-Man Webcam
 
-## ▶️ Iniciando o Projeto
+## ⚡ Só quero jogar (sem instalar nada)
+
+```bash
+# Baixe e extraia o pacman-webcam-dist.zip (página de Releases), depois:
+cd pasta-extraida
+python3 -m http.server 8080
+# Abra: http://localhost:8080
+```
+
+Na primeira vez é preciso internet para baixar o modelo de IA e as imagens do jogo (aparece uma barra com o percentual).
+Depois disso o jogo funciona offline. A câmera só funciona em `localhost` ou HTTPS.
+
+## ▶️ Iniciando o Projeto (desenvolvimento)
 
 ```bash
 # 1. Instalar dependências (primeira vez)

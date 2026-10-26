@@ -74,14 +74,6 @@
   font-weight: 600;
 }
 
-/** Loading message. */
-.status {
-  color: #f5f4f6;
-  font-weight: 300;
-  margin: 24px 0;
-  text-align: center;
-}
-
 /* Main Content Layout */
 .mainContent {
   display: flex;
@@ -313,31 +305,6 @@
   pointer-events: none;
 }
 
-.webcamBoxOuter {
-  background: #272829;
-  border: 1px solid #b5b6be;
-  border-radius: 4px;
-  box-sizing: border-box;
-  display: inline-block;
-  padding: 9px;
-}
-
-.webcamBoxInner {
-  border: 1px solid #b5b6be;
-  border-radius: 4px;
-  box-sizing: border-box;
-  display: flex;
-  justify-content: center;
-  overflow: hidden;
-  width: 96px;
-}
-
-.webcamBoxInner video {
-  height: 96px;
-  width: 96px;
-  transform: scaleX(-1);
-}
-
 /** Joystick panel. **/
 .panelRow {
   display: flex;
@@ -394,7 +361,7 @@
 }
 
 .panelRowTop .panelCellLeft {
-  background: url("/pointer.svg");
+  background-image: var(--pointer-url);
   background-repeat: no-repeat;
   background-size: 38%;
   background-position: 98% 46%;
@@ -606,4 +573,67 @@
   font-weight: 300;
   margin: 12px 0;
   text-align: center;
+}
+
+/** Tela de carregamento. **/
+.loadingOverlay {
+  align-items: center;
+  background: #272829;
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 20px;
+  position: fixed;
+  z-index: 2000;
+}
+
+.loadingCard {
+  max-width: 480px;
+  text-align: center;
+  width: 100%;
+}
+
+.loadingTitle {
+  color: #fdae16;
+  font-size: 28px;
+  font-weight: 500;
+  margin: 0 0 24px;
+}
+
+.loadingLabel {
+  color: #f5f4f6;
+  font-size: 16px;
+  margin: 0 0 12px;
+  min-height: 1.5em;
+}
+
+.loadingBar {
+  background-color: #373535 !important;
+  border-radius: 4px;
+  height: 10px !important;
+}
+
+.loadingBar :global(.MuiLinearProgress-bar) {
+  background-color: #70C8B7;
+}
+
+.loadingPercent {
+  color: #70C8B7;
+  font-size: 24px;
+  font-weight: 500;
+  margin: 12px 0;
+}
+
+.loadingHint {
+  color: #b5b6be;
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 16px 0 0;
+}
+
+.loadingError {
+  color: #f5f4f6;
+  font-size: 16px;
+  line-height: 1.5;
+  margin: 0 0 20px;
 }

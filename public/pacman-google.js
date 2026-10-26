@@ -10,7 +10,7 @@ google.pacManSound = true;
 google.browser = {};
 google.browser.engine = {}
 
-var spriteURL = '/pacman-sprite.png';
+var spriteURL = window.PACMAN_SPRITE_URL || 'https://storage.googleapis.com/tfjs-examples/assets/webcam-transfer-learning/pacman-sprite.png';
 
 google.dom.remove = function (a) {
 return a && a.parentNode && a.parentNode.removeChild(a)

@@ -4,6 +4,8 @@ import Accordion from '@mui/material/Accordion';
 import AccordionSummary from '@mui/material/AccordionSummary';
 import AccordionDetails from '@mui/material/AccordionDetails';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import LoadingScreen from './LoadingScreen.jsx';
+import { loadAssets } from './assets.js';
 
 const GAME_WIDTH = 554;
 const GAME_HEIGHT = 184;
@@ -13,10 +15,19 @@ const CONTROLS = ['up', 'down', 'left', 'right'];
 const CONTROL_LABELS = ['cima', 'baixo', 'esquerda', 'direita'];
 const CONTROL_CODES = [38, 40, 37, 39];
 const PREDICTIONS_PER_SECOND = 15;
-const MOBILENET_URLS = [
-  '/models/mobilenet/model.json',
-  'https://storage.googleapis.com/tfjs-models/tfjs/mobilenet_v1_0.25_224/model.json',
-];
+const MOBILENET_REMOTE_URL = 'https://storage.googleapis.com/tfjs-models/tfjs/mobilenet_v1_0.25_224/model.json';
+// Depois do primeiro download o modelo fica no IndexedDB do navegador (funciona offline).
+const MOBILENET_CACHE_URL = 'indexeddb://mobilenet-v1-025-224';
+
+// Peso (em %) de cada etapa na barra de progresso. Modelo e camera carregam em paralelo,
+// entao o total e a soma das contribuicoes de cada etapa.
+const PROGRESS_WEIGHTS = {
+  libs: 10,
+  assets: 5,
+  model: 65,
+  camera: 10,
+  warmup: 10,
+};
 
 // O TensorFlow.js e pesado: so e baixado depois que a pagina e o jogo ja foram exibidos.
 let tfPromise;
@@ -24,15 +35,25 @@ const loadTf = () => (tfPromise ??= import('@tensorflow/tfjs'));
 
 // O motor do Pac-Man e um script legado que precisa do #logo no DOM; e injetado uma unica vez.
 let gameScriptPromise;
-function loadGameScript() {
-  gameScriptPromise ??= new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = '/pacman-google.js';
-    script.async = true;
-    script.onload = resolve;
-    script.onerror = reject;
-    document.body.appendChild(script);
-  });
+function loadGameScript(getSpriteUrl) {
+  gameScriptPromise ??= getSpriteUrl()
+    .then(
+      (spriteUrl) =>
+        new Promise((resolve, reject) => {
+          // O motor le a URL do sprite deste global ao ser carregado.
+          window.PACMAN_SPRITE_URL = spriteUrl;
+          const script = document.createElement('script');
+          script.src = '/pacman-google.js';
+          script.async = true;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.body.appendChild(script);
+        })
+    )
+    .catch((error) => {
+      gameScriptPromise = undefined;
+      throw error;
+    });
   return gameScriptPromise;
 }
 
@@ -49,18 +70,70 @@ function tagError(kind, promise) {
   });
 }
 
-async function loadTruncatedMobileNet(tf) {
+function concatBuffers(chunks) {
+  const total = chunks.reduce((n, chunk) => n + chunk.byteLength, 0);
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return out;
+}
+
+// Baixa os pesos contando os bytes recebidos, para que a porcentagem seja real
+// (o onProgress do tf.loadLayersModel salta de 0 direto para o fim).
+async function downloadMobileNet(tf, onProgress) {
+  const baseUrl = MOBILENET_REMOTE_URL.slice(0, MOBILENET_REMOTE_URL.lastIndexOf('/') + 1);
+  const response = await fetch(MOBILENET_REMOTE_URL);
+  if (!response.ok) throw new Error(`HTTP ${response.status} ao baixar o modelo`);
+  const manifest = await response.json();
+
+  const groups = manifest.weightsManifest;
+  const weightSpecs = groups.flatMap((group) => group.weights);
+  const paths = groups.flatMap((group) => group.paths);
+  // Os pesos do MobileNet sao todos float32 (4 bytes), sem quantizacao.
+  const totalBytes = weightSpecs.reduce((n, spec) => n + 4 * spec.shape.reduce((a, b) => a * b, 1), 0);
+
+  let receivedBytes = 0;
+  const shards = await Promise.all(
+    paths.map(async (path) => {
+      const res = await fetch(baseUrl + path);
+      if (!res.ok) throw new Error(`HTTP ${res.status} ao baixar ${path}`);
+      const reader = res.body.getReader();
+      const chunks = [];
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        receivedBytes += value.byteLength;
+        onProgress(Math.min(1, receivedBytes / totalBytes), false);
+      }
+      return concatBuffers(chunks);
+    })
+  );
+
+  const weightData = concatBuffers(shards).buffer;
+  return tf.loadLayersModel(
+    tf.io.fromMemory({ modelTopology: manifest.modelTopology, weightSpecs, weightData })
+  );
+}
+
+// onProgress(fracao 0-1, veioDoCache)
+async function loadTruncatedMobileNet(tf, onProgress) {
   let mobilenet;
-  let lastError;
-  for (const url of MOBILENET_URLS) {
+  try {
+    mobilenet = await tf.loadLayersModel(MOBILENET_CACHE_URL);
+    onProgress(1, true);
+  } catch {
+    // Primeira vez (ou cache limpo): baixa do Google e guarda no navegador.
+    mobilenet = await downloadMobileNet(tf, onProgress);
     try {
-      mobilenet = await tf.loadLayersModel(url);
-      break;
-    } catch (error) {
-      lastError = error;
+      await mobilenet.save(MOBILENET_CACHE_URL);
+    } catch (e) {
+      console.warn('Nao foi possivel guardar o modelo para uso offline:', e);
     }
   }
-  if (!mobilenet) throw lastError;
   const layer = mobilenet.getLayer('conv_pw_13_relu');
   return tf.model({ inputs: mobilenet.inputs, outputs: layer.output });
 }
@@ -161,7 +234,9 @@ function SamplePad({ direction, label, total, canvasRef, onStart, onStop }) {
 }
 
 export default function App() {
-  const [status, setStatus] = useState('Carregando MobileNet e webcam...');
+  const [progress, setProgress] = useState({ label: 'Iniciando...', value: 0 });
+  const [attempt, setAttempt] = useState(0);
+  const [assets, setAssets] = useState({});
   const [totals, setTotals] = useState([0, 0, 0, 0]);
   const [trainStatus, setTrainStatus] = useState('TREINAR MODELO');
   const [isPredicting, setIsPredicting] = useState(false);
@@ -178,7 +253,6 @@ export default function App() {
   const [gameScale, setGameScale] = useState(1.5);
 
   const gameAreaRef = useRef(null);
-  const videoRef = useRef(null);
   const tfRef = useRef(null);
   const webcamRef = useRef(null);
   const truncatedMobileNetRef = useRef(null);
@@ -210,37 +284,81 @@ export default function App() {
     return () => observer.disconnect();
   }, []);
 
-  // Jogo primeiro: o script do Pac-Man carrega logo apos a primeira renderizacao.
-  useEffect(() => {
-    loadGameScript().catch(console.error);
-  }, []);
-
-  // Webcam + MobileNet (em paralelo), depois que o TensorFlow.js for baixado.
+  // Biblioteca de IA, jogo, modelo e webcam, com progresso para a tela de carregamento.
   useEffect(() => {
     let mounted = true;
+    const pending = { model: true, camera: true };
+    let modelLabel = 'Baixando o modelo de IA (apenas na primeira vez)...';
+
+    const fractions = { libs: 0, assets: 0, model: 0, camera: 0, warmup: 0 };
+
+    const report = (step, fraction, label) => {
+      if (!mounted) return;
+      fractions[step] = Math.min(1, Math.max(fractions[step], fraction));
+      const value = Math.round(
+        Object.keys(fractions).reduce((sum, key) => sum + PROGRESS_WEIGHTS[key] * fractions[key], 0)
+      );
+      setProgress({ label, value });
+    };
+    const pendingLabel = () => (pending.model ? modelLabel : 'Aguardando permissão da câmera...');
 
     async function init() {
+      setError(null);
+      setProgress({ label: 'Carregando a biblioteca de IA e o jogo...', value: 0 });
       try {
-        const tf = await loadTf();
+        let libsDone = 0;
+        const libStep = (promise) =>
+          promise.then((value) => {
+            report('libs', ++libsDone / 2, 'Carregando a biblioteca de IA e o jogo...');
+            return value;
+          });
+        const assetsPromise = loadAssets((fraction) =>
+          report('assets', fraction, 'Baixando as imagens do jogo...')
+        );
+        const [tf, loadedAssets] = await Promise.all([
+          libStep(loadTf()),
+          assetsPromise,
+          libStep(loadGameScript(() => assetsPromise.then((urls) => urls.sprite))),
+        ]);
+        document.documentElement.style.setProperty('--pointer-url', `url("${loadedAssets.pointer}")`);
+        if (mounted) setAssets(loadedAssets);
         tfRef.current = tf;
+        controllerDatasetRef.current?.clear();
         controllerDatasetRef.current = new ControllerDataset(tf, NUM_CLASSES);
 
-        const [webcam, truncatedMobileNet] = await Promise.all([
+        const [cameraResult, modelResult] = await Promise.allSettled([
           tagError(
             'webcam',
             tf.data.webcam(undefined, { resizeWidth: 224, resizeHeight: 224, facingMode: 'user' })
+          ).then((webcam) => {
+            pending.camera = false;
+            report('camera', 1, pendingLabel());
+            return webcam;
+          }),
+          tagError(
+            'model',
+            loadTruncatedMobileNet(tf, (fraction, cached) => {
+              modelLabel = cached ? 'Carregando o modelo de IA salvo...' : modelLabel;
+              if (fraction >= 1) pending.model = false;
+              report('model', fraction, pendingLabel());
+            })
           ),
-          tagError('model', loadTruncatedMobileNet(tf)),
         ]);
 
-        if (!mounted) {
-          webcam.stop();
-          return;
+        const webcam = cameraResult.status === 'fulfilled' ? cameraResult.value : null;
+        if (!mounted || modelResult.status === 'rejected') {
+          webcam?.stop();
+          if (!mounted) return;
+          throw modelResult.reason;
         }
+        if (!webcam) throw cameraResult.reason;
+
         webcamRef.current = webcam;
+        const truncatedMobileNet = modelResult.value;
         truncatedMobileNetRef.current = truncatedMobileNet;
 
         // Warm up
+        report('warmup', 0, 'Preparando o modelo...');
         const screenShot = await webcam.capture();
         tf.tidy(() => {
           truncatedMobileNet.predict(screenShot.expandDims(0));
@@ -248,19 +366,18 @@ export default function App() {
         screenShot.dispose();
 
         if (mounted) {
+          report('warmup', 1, 'Pronto!');
           setShowController(true);
-          setStatus('');
         }
       } catch (e) {
         console.error(e);
         if (mounted) {
-          setStatus('');
           setError({
-            kind: e.kind === 'model' ? 'model' : 'webcam',
+            kind: e.kind === 'webcam' ? 'webcam' : 'model',
             message:
-              e.kind === 'model'
-                ? 'Não foi possível carregar o modelo MobileNet. Verifique a conexão e recarregue a página.'
-                : 'Nenhuma webcam encontrada ou permissão negada. Para usar esta demo, use um dispositivo com webcam.',
+              e.kind === 'webcam'
+                ? 'Nenhuma webcam encontrada ou permissão negada. Para usar esta demo, use um dispositivo com webcam.'
+                : 'Não foi possível baixar os arquivos do jogo (modelo de IA e imagens). Na primeira vez é preciso estar conectado à internet. Conecte-se e tente novamente.',
           });
         }
       }
@@ -273,16 +390,9 @@ export default function App() {
       isPredictingRef.current = false;
       isRecordingRef.current = false;
       webcamRef.current?.stop();
+      webcamRef.current = null;
     };
-  }, []);
-
-  // Mostra a previa da webcam assim que o painel de treinamento existe.
-  useEffect(() => {
-    const stream = webcamRef.current?.stream;
-    if (showController && videoRef.current && stream) {
-      videoRef.current.srcObject = stream;
-    }
-  }, [showController]);
+  }, [attempt]);
 
   // Capturar imagem da webcam
   async function getImage() {
@@ -473,8 +583,18 @@ export default function App() {
     />
   );
 
+  const loading = !showController && !(error && error.kind === 'webcam');
+
   return (
     <>
+      {loading && (
+        <LoadingScreen
+          progress={progress}
+          error={error && error.kind === 'model' ? error : null}
+          onRetry={() => setAttempt((n) => n + 1)}
+        />
+      )}
+
       <header className={styles.header}>
         <div className={styles.headerContent}>
           <div className={styles.headerText}>
@@ -492,15 +612,9 @@ export default function App() {
 
       <div className={styles.mainContent}>
         <div className={styles.accordionContainer}>
-          {error && error.kind !== 'train' && (
+          {error && error.kind === 'webcam' && (
             <div className={styles.noWebcam} role="alert">
               {error.message}
-            </div>
-          )}
-
-          {status && (
-            <div className={styles.status} role="status" aria-live="polite">
-              {status}
             </div>
           )}
 
@@ -531,7 +645,7 @@ export default function App() {
                   <div className={styles.panelRowMiddle}>
                     <div className={`${styles.panelCell} ${styles.panelCellLeft}`}>{samplePad(2)}</div>
                     <div className={`${styles.panelCell} ${styles.panelCellCenter} ${styles.panelCellFill}`}>
-                      <img height="108" width="129" src="/joystick.png" alt="Joystick" />
+                      <img height="108" width="129" src={assets.joystick} alt="Joystick" />
                     </div>
                     <div className={`${styles.panelCell} ${styles.panelCellRight}`}>{samplePad(3)}</div>
                   </div>
@@ -576,13 +690,13 @@ export default function App() {
 
                   <div className={styles.bigButtons}>
                     <button id="train" type="button" onClick={train} disabled={isTraining || isPredicting}>
-                      <img width="66" height="66" src="/button.svg" alt="" />
+                      <img width="66" height="66" src={assets.button} alt="" />
                       <span id="train-status" aria-live="polite">
                         {trainStatus}
                       </span>
                     </button>
                     <button id="predict" type="button" onClick={togglePredict} disabled={!modelReady || isTraining}>
-                      <img width="66" height="66" src="/button.svg" alt="" />
+                      <img width="66" height="66" src={assets.button} alt="" />
                       <span>{isPredicting ? 'PARAR' : 'JOGAR'}</span>
                     </button>
                   </div>
@@ -621,12 +735,6 @@ export default function App() {
                         onChange={setParam('denseUnits')}
                         disabled={isTraining}
                       />
-                    </div>
-
-                    <div className={styles.webcamBoxOuter}>
-                      <div className={styles.webcamBoxInner}>
-                        <video ref={videoRef} autoPlay playsInline muted id="webcam" width="224" height="224"></video>
-                      </div>
                     </div>
                   </div>
                 </div>

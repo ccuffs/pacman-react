@@ -18,7 +18,27 @@ Este projeto é uma migração do jogo Pac-Man controlado por webcam originalmen
 - Webcam funcional
 - Navegador moderno com suporte a WebGL
 
-## 🛠️ Instalação
+## ▶️ Jogar sem instalar nada (sem Node.js)
+
+Quem só quer jogar não precisa de `node_modules`: use a versão já compilada.
+
+1. Baixe `pacman-webcam-dist.zip` na página de [Releases](../../releases) e extraia.
+2. Dentro da pasta extraída, inicie qualquer servidor de arquivos estáticos, por exemplo:
+   ```bash
+   python3 -m http.server 8080
+   ```
+3. Abra **`http://localhost:8080`** no navegador e permita o uso da câmera.
+
+Na **primeira abertura** é preciso internet: o modelo de IA (MobileNet, ~2 MB) e as imagens do jogo (sprite do
+Pac-Man, joystick, botões e seta) são baixados enquanto uma tela de carregamento mostra o percentual, e ficam
+guardados no navegador (IndexedDB e Cache Storage). Nas próximas vezes o jogo abre **sem internet**.
+
+> **Atenção:** o navegador só libera a webcam em `localhost` ou em páginas HTTPS. Servir a pasta pela
+> rede (`http://192.168.x.x:8080`) **não** libera a câmera: cada computador deve abrir
+> `http://localhost:...` com a pasta no próprio computador. A pasta precisa ser servida na raiz do
+> servidor, e o cache do modelo vale por navegador e por endereço (porta diferente = novo download).
+
+## 🛠️ Instalação (desenvolvimento)
 
 ```bash
 # Instalar dependências
@@ -65,11 +85,14 @@ pacman-react/
 ├── index.html                  # Entrada do Vite
 ├── vite.config.js
 ├── public/
-│   ├── pacman-google.js        # Motor do jogo Pac-Man (legado)
-│   └── models/mobilenet/       # MobileNet hospedado localmente
+│   ├── pacman-google.js        # Motor do jogo Pac-Man (legado, com ajustes)
+│   ├── cc-logo-black-on-bg-transparent.png
+│   └── favicon.ico
 ├── src/
 │   ├── main.jsx                # Bootstrap do React
 │   ├── App.jsx                 # Componente principal
+│   ├── LoadingScreen.jsx       # Tela de carregamento com percentual
+│   ├── assets.js               # Baixa e guarda em cache sprite, joystick, botões e seta
 │   ├── App.module.css          # Estilos do componente
 │   └── index.css               # Estilos globais + Pac-Man
 └── package.json
@@ -149,8 +172,10 @@ respectivos titulares e não são cobertos pela licença deste repositório.
 
 | Componente | Origem | Licença |
 | --- | --- | --- |
-| Motor do jogo (`public/pacman-google.js`, `public/pacman-sprite.png`) | Google Doodle de 2010 (versão de 2018) | Apache 2.0; PAC-MAN™ © BANDAI NAMCO |
-| MobileNet v1 0.25 (`public/models/mobilenet/`) | [tfjs-models](https://github.com/tensorflow/tfjs-models) | Apache 2.0 (veja o [NOTICE](public/models/mobilenet/NOTICE.md)) |
+| Motor do jogo (`public/pacman-google.js`) | Google Doodle de 2010 (versão de 2018), com ajustes neste projeto | Apache 2.0; PAC-MAN™ © BANDAI NAMCO |
+| Sprite do Pac-Man (baixado em tempo de execução de `storage.googleapis.com/tfjs-examples/...`) | [tfjs-examples](https://github.com/tensorflow/tfjs-examples) | PAC-MAN™ © BANDAI NAMCO; não é redistribuído neste repositório |
+| Joystick, botão e seta (baixados via jsDelivr, fixados no commit `a4aede3`) | [tfjs-examples/webcam-transfer-learning](https://github.com/tensorflow/tfjs-examples/tree/a4aede36138f18e9be1fa46f2e60f06f00a4e7bc/webcam-transfer-learning/images) | Apache 2.0 |
+| MobileNet v1 0.25, 224px (pesos baixados em tempo de execução de `storage.googleapis.com/tfjs-models`; copyright The TensorFlow Authors / Google LLC) | [tfjs-models](https://github.com/tensorflow/tfjs-models) | Apache 2.0. Os pesos foram treinados no ImageNet, que tem termos de uso próprios (https://www.image-net.org/download) |
 | TensorFlow.js | [tensorflow/tfjs](https://github.com/tensorflow/tfjs) | Apache 2.0 |
 | React, Vite, MUI | Respectivos projetos | MIT |
 
