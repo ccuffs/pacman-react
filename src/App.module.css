@@ -361,7 +361,7 @@
 }
 
 .panelRowTop .panelCellLeft {
-  background: url("/pointer.svg");
+  background-image: var(--pointer-url);
   background-repeat: no-repeat;
   background-size: 38%;
   background-position: 98% 46%;

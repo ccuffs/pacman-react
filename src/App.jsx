@@ -5,6 +5,7 @@ import AccordionSummary from '@mui/material/AccordionSummary';
 import AccordionDetails from '@mui/material/AccordionDetails';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import LoadingScreen from './LoadingScreen.jsx';
+import { loadAssets } from './assets.js';
 
 const GAME_WIDTH = 554;
 const GAME_HEIGHT = 184;
@@ -17,12 +18,12 @@ const PREDICTIONS_PER_SECOND = 15;
 const MOBILENET_REMOTE_URL = 'https://storage.googleapis.com/tfjs-models/tfjs/mobilenet_v1_0.25_224/model.json';
 // Depois do primeiro download o modelo fica no IndexedDB do navegador (funciona offline).
 const MOBILENET_CACHE_URL = 'indexeddb://mobilenet-v1-025-224';
-const SPRITE_URL = '/pacman-sprite.png';
 
 // Peso (em %) de cada etapa na barra de progresso. Modelo e camera carregam em paralelo,
 // entao o total e a soma das contribuicoes de cada etapa.
 const PROGRESS_WEIGHTS = {
-  libs: 15,
+  libs: 10,
+  assets: 5,
   model: 65,
   camera: 10,
   warmup: 10,
@@ -34,15 +35,25 @@ const loadTf = () => (tfPromise ??= import('@tensorflow/tfjs'));
 
 // O motor do Pac-Man e um script legado que precisa do #logo no DOM; e injetado uma unica vez.
 let gameScriptPromise;
-function loadGameScript() {
-  gameScriptPromise ??= new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = '/pacman-google.js';
-    script.async = true;
-    script.onload = resolve;
-    script.onerror = reject;
-    document.body.appendChild(script);
-  });
+function loadGameScript(getSpriteUrl) {
+  gameScriptPromise ??= getSpriteUrl()
+    .then(
+      (spriteUrl) =>
+        new Promise((resolve, reject) => {
+          // O motor le a URL do sprite deste global ao ser carregado.
+          window.PACMAN_SPRITE_URL = spriteUrl;
+          const script = document.createElement('script');
+          script.src = '/pacman-google.js';
+          script.async = true;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.body.appendChild(script);
+        })
+    )
+    .catch((error) => {
+      gameScriptPromise = undefined;
+      throw error;
+    });
   return gameScriptPromise;
 }
 
@@ -56,15 +67,6 @@ function tagError(kind, promise) {
     error.kind = kind;
     error.cause = cause;
     throw error;
-  });
-}
-
-function preloadImage(src) {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = resolve;
-    image.onerror = reject;
-    image.src = src;
   });
 }
 
@@ -234,6 +236,7 @@ function SamplePad({ direction, label, total, canvasRef, onStart, onStop }) {
 export default function App() {
   const [progress, setProgress] = useState({ label: 'Iniciando...', value: 0 });
   const [attempt, setAttempt] = useState(0);
+  const [assets, setAssets] = useState({});
   const [totals, setTotals] = useState([0, 0, 0, 0]);
   const [trainStatus, setTrainStatus] = useState('TREINAR MODELO');
   const [isPredicting, setIsPredicting] = useState(false);
@@ -281,18 +284,13 @@ export default function App() {
     return () => observer.disconnect();
   }, []);
 
-  // Jogo primeiro: o script do Pac-Man carrega logo apos a primeira renderizacao.
-  useEffect(() => {
-    loadGameScript().catch(console.error);
-  }, []);
-
   // Biblioteca de IA, jogo, modelo e webcam, com progresso para a tela de carregamento.
   useEffect(() => {
     let mounted = true;
     const pending = { model: true, camera: true };
     let modelLabel = 'Baixando o modelo de IA (apenas na primeira vez)...';
 
-    const fractions = { libs: 0, model: 0, camera: 0, warmup: 0 };
+    const fractions = { libs: 0, assets: 0, model: 0, camera: 0, warmup: 0 };
 
     const report = (step, fraction, label) => {
       if (!mounted) return;
@@ -311,14 +309,19 @@ export default function App() {
         let libsDone = 0;
         const libStep = (promise) =>
           promise.then((value) => {
-            report('libs', ++libsDone / 3, 'Carregando a biblioteca de IA e o jogo...');
+            report('libs', ++libsDone / 2, 'Carregando a biblioteca de IA e o jogo...');
             return value;
           });
-        const [tf] = await Promise.all([
+        const assetsPromise = loadAssets((fraction) =>
+          report('assets', fraction, 'Baixando as imagens do jogo...')
+        );
+        const [tf, loadedAssets] = await Promise.all([
           libStep(loadTf()),
-          libStep(loadGameScript().catch(console.error)),
-          libStep(preloadImage(SPRITE_URL).catch(console.error)),
+          assetsPromise,
+          libStep(loadGameScript(() => assetsPromise.then((urls) => urls.sprite))),
         ]);
+        document.documentElement.style.setProperty('--pointer-url', `url("${loadedAssets.pointer}")`);
+        if (mounted) setAssets(loadedAssets);
         tfRef.current = tf;
         controllerDatasetRef.current?.clear();
         controllerDatasetRef.current = new ControllerDataset(tf, NUM_CLASSES);
@@ -374,7 +377,7 @@ export default function App() {
             message:
               e.kind === 'webcam'
                 ? 'Nenhuma webcam encontrada ou permissão negada. Para usar esta demo, use um dispositivo com webcam.'
-                : 'Não foi possível carregar o modelo de IA. Na primeira vez é preciso estar conectado à internet para baixá-lo. Conecte-se e tente novamente.',
+                : 'Não foi possível baixar os arquivos do jogo (modelo de IA e imagens). Na primeira vez é preciso estar conectado à internet. Conecte-se e tente novamente.',
           });
         }
       }
@@ -642,7 +645,7 @@ export default function App() {
                   <div className={styles.panelRowMiddle}>
                     <div className={`${styles.panelCell} ${styles.panelCellLeft}`}>{samplePad(2)}</div>
                     <div className={`${styles.panelCell} ${styles.panelCellCenter} ${styles.panelCellFill}`}>
-                      <img height="108" width="129" src="/joystick.png" alt="Joystick" />
+                      <img height="108" width="129" src={assets.joystick} alt="Joystick" />
                     </div>
                     <div className={`${styles.panelCell} ${styles.panelCellRight}`}>{samplePad(3)}</div>
                   </div>
@@ -687,13 +690,13 @@ export default function App() {
 
                   <div className={styles.bigButtons}>
                     <button id="train" type="button" onClick={train} disabled={isTraining || isPredicting}>
-                      <img width="66" height="66" src="/button.svg" alt="" />
+                      <img width="66" height="66" src={assets.button} alt="" />
                       <span id="train-status" aria-live="polite">
                         {trainStatus}
                       </span>
                     </button>
                     <button id="predict" type="button" onClick={togglePredict} disabled={!modelReady || isTraining}>
-                      <img width="66" height="66" src="/button.svg" alt="" />
+                      <img width="66" height="66" src={assets.button} alt="" />
                       <span>{isPredicting ? 'PARAR' : 'JOGAR'}</span>
                     </button>
                   </div>
