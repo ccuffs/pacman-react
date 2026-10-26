@@ -2077,13 +2077,19 @@ function () {
   };
   g.handleKeyDown = function (b) {
     if (!b) b = window.event;
+    var t = b.target;
+    // Nao captura as setas quando o usuario esta navegando em controles de formulario.
+    if (t && /^(SELECT|INPUT|TEXTAREA|BUTTON)$/.test(t.tagName)) return;
     if (g.keyPressed(b.keyCode)) if (b.preventDefault) b.preventDefault();
     else b.returnValue = e
   };
+  // b, c: coordenadas do viewport (clientX/clientY). Considera a escala CSS aplicada ao jogo.
   g.canvasClicked = function (b, c) {
-    var d = g.getAbsoluteElPos(g.canvasEl);
-    b -= d[1] - -32;
-    c -= d[0] - 0;
+    var r = g.canvasEl.getBoundingClientRect(),
+      s = r.width / g.canvasEl.offsetWidth || 1,
+      d;
+    b = (b - r.left) / s - 32;
+    c = (c - r.top) / s;
     d = g.actors[0];
     var f = g.getPlayfieldX(d.pos[1] + d.posDelta[1]) + 16,
       h = g.getPlayfieldY(d.pos[0] + d.posDelta[0]) + 32,
@@ -2097,7 +2103,6 @@ function () {
     g.canvasClicked(b.clientX, b.clientY)
   };
   g.registerTouch = function () {
-    document.body.addEventListener("touchstart", g.handleTouchStart, a);
     g.canvasEl.addEventListener("touchstart", g.handleTouchStart, a);
     document.f && document.f.q && document.f.q.addEventListener("touchstart", g.handleTouchStart, a)
   };
@@ -2123,11 +2128,11 @@ function () {
     b.stopPropagation()
   };
   g.handleTouchEnd = function (b) {
-    if (g.touchDX == 0 && g.touchDY == 0) g.canvasClicked(g.touchStartX, g.touchStartY);
+    if (g.touchDX == 0 && g.touchDY == 0) g.canvasClicked(g.touchStartX - window.pageXOffset, g.touchStartY - window.pageYOffset);
     else {
       var c = Math.abs(g.touchDX),
         d = Math.abs(g.touchDY);
-      if (c < 8 && d < 8) g.canvasClicked(g.touchStartX, g.touchStartY);
+      if (c < 8 && d < 8) g.canvasClicked(g.touchStartX - window.pageXOffset, g.touchStartY - window.pageYOffset);
       else if (c > 15 && d < c * 2 / 3) g.actors[0].requestedDir = g.touchDX > 0 ? 8 : 4;
       else if (d > 15 && c < d * 2 / 3) g.actors[0].requestedDir = g.touchDY > 0 ? 2 : 1
     }

@@ -18,7 +18,7 @@ body {
   box-sizing: border-box;
 }
 
-button:focus {
+button:focus:not(:focus-visible) {
   outline: 0;
 }
 
@@ -29,12 +29,15 @@ a {
 
 /* Pac-Man Game Styles */
 #logo {
-  background: url('https://storage.googleapis.com/tfjs-examples/assets/webcam-transfer-learning/bck.png');
-  background-repeat: no-repeat;
-  background-position-y: -5px;
+  background: #000;
   margin: 0 auto;
   position: relative;
-  /* transform e width removidos - usando configurações do page.module.css */
+}
+
+/* O engine do Pac-Man foi escrito para content-box; o reset global quebra o layout. */
+#pcm-c,
+#pcm-c * {
+  box-sizing: content-box;
 }
 
 #logo #pcm-c {
