@@ -10,7 +10,7 @@ yarn install
 yarn dev
 
 # 3. Abrir no navegador
-# Acesse: http://localhost:3000
+# Acesse: http://localhost:5173
 ```
 
 ## 🎯 Como Usar
@@ -100,10 +100,10 @@ yarn dev
 yarn build
 
 # Executar build
-yarn start
+yarn preview
 
 # Limpar cache (se tiver problemas)
-rm -rf .next node_modules
+rm -rf dist node_modules
 yarn install
 ```
 

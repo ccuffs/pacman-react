@@ -32,10 +32,8 @@
   line-height: 1.45em;
   overflow: hidden;
   padding: 20px 0;
-  position: fixed;
+  position: sticky;
   top: 0;
-  left: 0;
-  right: 0;
   width: 100%;
   z-index: 1000;
   text-align: left;
@@ -53,6 +51,7 @@
 }
 
 .headerLogo {
+  max-width: 30vw;
   height: 60px;
   width: auto;
   object-fit: contain;
@@ -60,8 +59,9 @@
 }
 
 .headerText {
-  flex: 0 0 auto;
-  font-size: 36px;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: clamp(18px, 2.6vw, 36px);
   font-weight: 500;
   line-height: 1.45em;
   color: #fdae16;
@@ -78,8 +78,7 @@
 .status {
   color: #f5f4f6;
   font-weight: 300;
-  margin: 12px 0;
-  margin-top: 120px;
+  margin: 24px 0;
   text-align: center;
 }
 
@@ -89,7 +88,6 @@
   gap: 12px;
   max-width: 1700px;
   margin: 20px auto;
-  margin-top: 120px;
   padding: 0 20px;
   align-items: flex-start;
   justify-content: center;
@@ -98,7 +96,7 @@
 /* Accordion Container */
 .accordionContainer {
   flex: 1;
-  min-width: 1400px;
+  min-width: 0;
   max-width: 1400px;
 }
 
@@ -149,30 +147,34 @@
   justify-content: center;
   align-items: center;
   width: 100%;
-  min-height: 700px;
   margin: 0 auto;
-  overflow: auto;
+  overflow: hidden;
+}
+
+.gameStage {
+  position: relative;
+  flex: none;
+  background: #000;
 }
 
 .pacmanContainer :global(#logo) {
-  transform: scale(2.3) translateX(10px);
-  transform-origin: center;
-  display: inline-block;
-}
-
-.pacmanContainer :global(#logo #pcm-c) {
-  overflow: visible !important;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 554px;
+  height: 184px;
+  background: #000;
+  transform-origin: top left;
 }
 
 /** No webcam message. */
 .noWebcam {
   display: block;
   text-align: center;
-  font-size: 30px;
+  font-size: 24px;
   color: #f5f4f6;
   padding: 30px;
-  padding-top: 120px;
-  line-height: 30px;
+  line-height: 1.4;
 }
 
 /** Controls. **/
@@ -208,7 +210,8 @@
   display: flex;
   flex-direction: row;
   justify-content: space-between;
-  gap: 90px;
+  gap: clamp(24px, 6vw, 90px);
+  flex-wrap: wrap;
 }
 
 .bigButtons button {
@@ -223,8 +226,16 @@
   padding: 0;
 }
 
-.bigButtons button:focus {
-  outline: 0;
+.bigButtons button:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.bigButtons button:focus-visible,
+.recordButton:focus-visible,
+.secondaryButton:focus-visible {
+  outline: 2px solid #70C8B7;
+  outline-offset: 2px;
 }
 
 .bigButtons button span {
@@ -246,8 +257,10 @@
   display: flex;
   flex-direction: row;
   justify-content: space-between;
-  margin-top: 90px;
-  gap: 90px;
+  margin-top: 40px;
+  gap: clamp(24px, 6vw, 90px);
+  flex-wrap: wrap;
+  justify-content: center;
 }
 
 .hyperParams {
@@ -264,7 +277,7 @@
 
 .dropdown label {
   color: #b5b6be;
-  font-size: 11px;
+  font-size: 13px;
   display: block;
   font-weight: 300;
   line-height: 1;
@@ -284,7 +297,7 @@
   border-radius: 0;
   color: #f5f4f6;
   display: block;
-  font-size: 12px;
+  font-size: 14px;
   outline: none;
   padding: 6px 0;
   width: 100%;
@@ -365,7 +378,7 @@
 
 .panelCell p {
   color: #b5b6be;
-  font-size: 10px;
+  font-size: 12px;
   margin: 0;
   padding: 0;
   text-align: center;
@@ -423,7 +436,7 @@
 }
 
 .helpText {
-  font-size: 10px;
+  font-size: 12px;
   font-style: italic;
   left: 0;
   line-height: 1.1;
@@ -477,6 +490,9 @@
 }
 
 .recordButton {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
   background: none;
   border: none;
   box-sizing: border-box;
@@ -490,10 +506,6 @@
   width: 100%;
 }
 
-.recordButton:focus {
-  outline: 0;
-}
-
 .recordButton span {
   background: #373535;
   border: 1px solid #b5b6be;
@@ -501,11 +513,12 @@
   bottom: 9px;
   color: #f5f4f6;
   display: block;
-  font-size: 8px;
+  font-size: 11px;
   left: 9px;
+  padding: 1px 0;
   position: absolute;
   right: 9px;
-  opacity: 0.5;
+  opacity: 0.85;
 }
 
 /* Responsive design */
@@ -530,21 +543,61 @@
   }
 
   .headerLogo {
-    height: 50px;
+    height: 36px;
   }
 
   .headerText {
-    font-size: 24px;
+    font-size: 16px;
   }
 
   .accordionContainer {
-    min-width: auto;
     max-width: 100%;
+    width: 100%;
   }
 
   .header {
     font-size: 24px;
   }
+}
+
+/** Acoes e mensagens. **/
+.actionsRow {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  justify-content: center;
+  margin-top: 16px;
+}
+
+.secondaryButton {
+  background: none;
+  border: 1px solid #70C8B7;
+  border-radius: 4px;
+  color: #70C8B7;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 8px 16px;
+}
+
+.secondaryButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.hint {
+  color: #b5b6be;
+  font-size: 12px;
+}
+
+.inlineError {
+  background: rgba(244, 67, 54, 0.15);
+  border: 1px solid #f44336;
+  border-radius: 4px;
+  color: #f5f4f6;
+  font-size: 14px;
+  margin-bottom: 20px;
+  padding: 10px 14px;
 }
 
 /** Footer. **/
