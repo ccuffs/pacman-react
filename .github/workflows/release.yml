@@ -1,0 +1,27 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+      - run: yarn build
+      - name: Compactar dist
+        run: cd dist && zip -r ../pacman-webcam-dist.zip .
+      - name: Publicar no Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: pacman-webcam-dist.zip
