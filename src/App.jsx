@@ -408,7 +408,11 @@ export default function App() {
   async function getImage() {
     const tf = tfRef.current;
     const img = await webcamRef.current.capture();
-    const processedImg = tf.tidy(() => img.expandDims(0).toFloat().div(127).sub(1));
+    // Normaliza os valores para o range [-1, 1]
+    // Divide por 127.5 (metade de 255) e subtrai 1 para centralizar em zero
+    const processedImg = tf.tidy(() => 
+      img.expandDims(0).toFloat().div(127.5).sub(1).clipByValue(-1, 1)
+    );
     img.dispose();
     return processedImg;
   }
@@ -418,18 +422,27 @@ export default function App() {
     const tf = tfRef.current;
     const canvas = thumbCanvasRefs[CONTROLS[label]].current;
     if (!canvas) return;
-    const pixels = tf.tidy(() => img.squeeze([0]).add(1).div(2).clipByValue(0, 1));
+    // Converte de volta para o range [0, 1] para exibição
+    // Valores em [-1, 1] são transformados em [0, 1]
+    const pixels = tf.tidy(() => 
+      img.squeeze([0]).add(1).div(2).clipByValue(0, 1)
+    );
     await tf.browser.toPixels(pixels, canvas);
     pixels.dispose();
   }
 
   async function addExample(label) {
     const tf = tfRef.current;
-    const img = await getImage();
-    const embedding = tf.tidy(() => truncatedMobileNetRef.current.predict(img));
-    controllerDatasetRef.current.addExample(embedding, label);
-    await drawThumb(img, label);
-    img.dispose();
+    try {
+      const img = await getImage();
+      const embedding = tf.tidy(() => truncatedMobileNetRef.current.predict(img));
+      controllerDatasetRef.current.addExample(embedding, label);
+      await drawThumb(img, label);
+      img.dispose();
+    } catch (e) {
+      console.error('Erro ao processar imagem da câmera:', e);
+      throw new Error('Falha ao capturar imagem da câmera. Verifique se a câmera está funcionando corretamente.');
+    }
   }
 
   async function startRecording(label) {
@@ -448,8 +461,11 @@ export default function App() {
         await tfRef.current.nextFrame();
       }
     } catch (e) {
-      console.error(e);
-      setError({ kind: 'train', message: 'Falha ao gravar amostra. Veja o console para detalhes.' });
+      console.error('Erro durante a gravação:', e);
+      setError({ 
+        kind: 'train', 
+        message: e.message || 'Falha ao gravar amostra. Tente usar outra câmera ou verifique se ela está funcionando corretamente.' 
+      });
     } finally {
       isRecordingRef.current = false;
     }
@@ -468,6 +484,25 @@ export default function App() {
       const canvas = ref.current;
       canvas?.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
     }
+  }
+
+  function resetAll() {
+    // Para a predição se estiver rodando
+    if (isPredictingRef.current) {
+      isPredictingRef.current = false;
+      setIsPredicting(false);
+    }
+
+    // Descarta o modelo treinado
+    modelRef.current?.dispose();
+    modelRef.current = null;
+    setModelReady(false);
+
+    // Limpa as amostras
+    clearSamples();
+
+    // Reinicia o jogo
+    restartGame();
   }
 
   async function train() {
@@ -591,20 +626,31 @@ export default function App() {
     const minInterval = 1000 / PREDICTIONS_PER_SECOND;
 
     while (isPredictingRef.current) {
-      const startedAt = performance.now();
-      const img = await getImage();
-      const predictedClass = tf.tidy(() =>
-        modelRef.current.predict(truncatedMobileNetRef.current.predict(img)).as1D().argMax()
-      );
-      img.dispose();
-      const classId = (await predictedClass.data())[0];
-      predictedClass.dispose();
+      try {
+        const startedAt = performance.now();
+        const img = await getImage();
+        const predictedClass = tf.tidy(() =>
+          modelRef.current.predict(truncatedMobileNetRef.current.predict(img)).as1D().argMax()
+        );
+        img.dispose();
+        const classId = (await predictedClass.data())[0];
+        predictedClass.dispose();
 
-      pacman()?.keyPressed(CONTROL_CODES[classId]);
+        pacman()?.keyPressed(CONTROL_CODES[classId]);
 
-      await tf.nextFrame();
-      const wait = minInterval - (performance.now() - startedAt);
-      if (wait > 0) await sleep(wait);
+        await tf.nextFrame();
+        const wait = minInterval - (performance.now() - startedAt);
+        if (wait > 0) await sleep(wait);
+      } catch (e) {
+        console.error('Erro durante a predição:', e);
+        isPredictingRef.current = false;
+        setIsPredicting(false);
+        setError({ 
+          kind: 'train', 
+          message: 'Falha durante a predição. A câmera pode ter sido desconectada ou houve um problema ao processar a imagem.' 
+        });
+        break;
+      }
     }
   }
 
@@ -752,6 +798,18 @@ export default function App() {
                     <button id="predict" type="button" onClick={togglePredict} disabled={!modelReady || isTraining}>
                       <img width="66" height="66" src={assets.button} alt="" />
                       <span>{isPredicting ? 'PARAR' : 'JOGAR'}</span>
+                    </button>
+                  </div>
+
+                  <div className={styles.actionsRow}>
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      onClick={resetAll}
+                      disabled={isTraining || (totals.every((total) => total === 0) && !modelReady)}
+                      title="Remove todas as amostras e reseta o modelo treinado"
+                    >
+                      Resetar tudo (Modelo + Amostras)
                     </button>
                   </div>
 
